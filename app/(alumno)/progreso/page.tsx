@@ -94,7 +94,7 @@ export default function ProgresoPage() {
                                     <XAxis dataKey="fecha" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                                     <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
                                     <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }}
-                                        formatter={(v: number) => [`${v} kg`, 'Peso']} />
+                                        formatter={(v: number | undefined) => [`${v ?? 0} kg`, 'Peso']} />
                                     <Line type="monotone" dataKey="peso" stroke="var(--neon)" strokeWidth={2.5} dot={{ fill: 'var(--neon)', r: 4 }} activeDot={{ r: 6 }} />
                                 </LineChart>
                             </ResponsiveContainer>
