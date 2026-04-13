@@ -9,6 +9,7 @@ interface AuthContextType {
     perfil: Perfil | null;
     loading: boolean;
     signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+    signUp: (email: string, password: string, nombre: string) => Promise<{ error: string | null }>;
     signOut: () => Promise<void>;
 }
 
@@ -39,12 +40,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error?.message ?? null };
     };
 
+    /**
+     * Registra un nuevo usuario con rol 'alumno'.
+     * El trigger `handle_new_user` en Supabase lee `raw_user_meta_data->>'nombre'`
+     * y crea automáticamente la fila en `perfiles`.
+     */
+    const signUp = async (email: string, password: string, nombre: string) => {
+        const { error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: { nombre },
+            },
+        });
+        return { error: error?.message ?? null };
+    };
+
     const signOut = async () => {
         await supabase.auth.signOut();
     };
 
     return (
-        <AuthContext.Provider value={{ user, perfil, loading, signIn, signOut }}>
+        <AuthContext.Provider value={{ user, perfil, loading, signIn, signUp, signOut }}>
             {children}
         </AuthContext.Provider>
     );
