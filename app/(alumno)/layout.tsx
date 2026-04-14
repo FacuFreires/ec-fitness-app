@@ -41,7 +41,9 @@ export default function AlumnoLayout({ children }: { children: React.ReactNode }
                     </div>
                     <span style={{ fontWeight: 800, fontSize: 17 }}>EC <span className="neon-text">Fitness</span></span>
                 </div>
-                <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{perfil?.nombre}</span>
+                <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                    {perfil?.nombre_completo ?? ''}
+                </span>
             </header>
 
             {/* Content */}

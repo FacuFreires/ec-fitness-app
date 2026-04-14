@@ -7,7 +7,49 @@ import { ChevronDown, ChevronUp, CheckCircle, Play, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ─── Rest Timer Component ───────────────────────────────────────────────
+// ─── Media Viewer ────────────────────────────────────────────────────────────
+// Detecta el tipo de URL y renderiza el reproductor adecuado
+function MediaViewer({ url, nombre }: { url: string; nombre: string }) {
+    // YouTube
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?\s]+)/);
+    if (ytMatch) {
+        return (
+            <div style={{ background: '#000', width: '100%', aspectRatio: '16/9' }}>
+                <iframe
+                    src={`https://www.youtube.com/embed/${ytMatch[1]}?rel=0&modestbranding=1`}
+                    style={{ width: '100%', height: '100%', border: 'none' }}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    title={nombre}
+                />
+            </div>
+        );
+    }
+    // Archivo de video
+    if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) {
+        return (
+            <video
+                src={url}
+                controls
+                playsInline
+                style={{ width: '100%', maxHeight: 220, background: 'var(--bg-card2)', display: 'block' }}
+            />
+        );
+    }
+    // GIF / imagen
+    return (
+        <div style={{ background: 'var(--bg-card2)', maxHeight: 220, overflow: 'hidden' }}>
+            <img
+                src={url}
+                alt={nombre}
+                loading="lazy"
+                style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }}
+            />
+        </div>
+    );
+}
+
+// ─── Rest Timer ───────────────────────────────────────────────────────────────
 function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void }) {
     const [remaining, setRemaining] = useState(seconds);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -56,7 +98,7 @@ function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void })
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function EntrenarPage() {
     const { user } = useAuth();
     const [rutinas, setRutinas] = useState<Rutina[]>([]);
@@ -68,17 +110,33 @@ export default function EntrenarPage() {
     const [loading, setLoading] = useState(true);
     const supabase = createClient();
 
+    // Cargar rutinas activas del alumno
     useEffect(() => {
         if (!user) return;
-        supabase.from('rutinas').select('*').eq('alumno_id', user.id).eq('activo', true).order('creado_at')
-            .then(({ data }) => { setRutinas(data ?? []); if (data?.[0]) setSelectedRutina(data[0].id); setLoading(false); });
+        supabase
+            .from('rutinas')
+            .select('*')
+            .eq('alumno_id', user.id)
+            .eq('activa', true)          // columna: activa (no activo)
+            .order('creado_at')          // columna: creado_at
+            .then(({ data, error }) => {
+                if (error) console.error('[Entrenar] rutinas:', error.message);
+                setRutinas(data ?? []);
+                if (data?.[0]) setSelectedRutina(data[0].id);
+                setLoading(false);
+            });
     }, [user]);
 
+    // Cargar ejercicios de la rutina seleccionada
     useEffect(() => {
         if (!selectedRutina) return;
-        supabase.from('rutina_ejercicios').select('*, ejercicio:ejercicios_master(*)')
-            .eq('rutina_id', selectedRutina).order('orden')
-            .then(({ data }) => {
+        supabase
+            .from('rutina_ejercicios')
+            .select('*, ejercicio:ejercicios(*)')   // tabla: ejercicios (no ejercicios_master)
+            .eq('rutina_id', selectedRutina)
+            .order('orden')
+            .then(({ data, error }) => {
+                if (error) console.error('[Entrenar] rutina_ejercicios:', error.message);
                 setEjercicios(data ?? []);
                 const init: Record<string, { peso: string; reps: string; done: boolean[] }> = {};
                 (data ?? []).forEach(re => {
@@ -96,9 +154,8 @@ export default function EntrenarPage() {
         newDone[serieIdx] = true;
         setSeriesState(prev => ({ ...prev, [re.id]: { ...state, done: newDone } }));
 
-        // Log progress
         if (user) {
-            await supabase.from('logs_progreso').insert({
+            const { error } = await supabase.from('logs_progreso').insert({
                 alumno_id: user.id,
                 ejercicio_id: re.ejercicio_id,
                 rutina_ejercicio_id: re.id,
@@ -106,9 +163,9 @@ export default function EntrenarPage() {
                 reps_hechas: parseInt(state.reps) || re.repeticiones,
                 fecha: new Date().toISOString().split('T')[0],
             });
+            if (error) console.error('[Entrenar] logs_progreso insert:', error.message);
         }
 
-        // Fire rest timer
         setTimer({ seconds: re.tiempo_descanso });
         toast.success(`Serie ${serieIdx + 1} completada 💪`);
     };
@@ -130,7 +187,7 @@ export default function EntrenarPage() {
 
     return (
         <div style={{ padding: '20px 16px' }}>
-            {/* Routine selector */}
+            {/* Selector de rutina */}
             {rutinas.length > 1 && (
                 <select className="input-base" value={selectedRutina} onChange={e => setSelectedRutina(e.target.value)}
                     style={{ marginBottom: 20, cursor: 'pointer' }}>
@@ -144,7 +201,7 @@ export default function EntrenarPage() {
                 </div>
             )}
 
-            {/* Exercises */}
+            {/* Lista de ejercicios */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {ejercicios.map((re, idx) => {
                     const expanded = expandedId === re.id;
@@ -163,11 +220,14 @@ export default function EntrenarPage() {
                                     border: '2px solid', borderColor: allDone ? 'var(--neon)' : 'var(--border)',
                                     transition: 'all 0.3s',
                                 }}>
-                                    {allDone ? <CheckCircle size={18} color="#000" /> : <span style={{ fontWeight: 700, color: 'var(--text-secondary)', fontSize: 13 }}>{idx + 1}</span>}
+                                    {allDone
+                                        ? <CheckCircle size={18} color="#000" />
+                                        : <span style={{ fontWeight: 700, color: 'var(--text-secondary)', fontSize: 13 }}>{idx + 1}</span>
+                                    }
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {re.ejercicio?.nombre}
+                                        {re.ejercicio?.nombre ?? '—'}
                                     </div>
                                     <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                                         {re.series} series × {re.repeticiones} reps · {re.tiempo_descanso}s descanso
@@ -182,12 +242,9 @@ export default function EntrenarPage() {
                                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                                         transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}>
                                         <div style={{ borderTop: '1px solid var(--border)' }}>
-                                            {/* GIF */}
-                                            {re.ejercicio?.gif_url && (
-                                                <div style={{ background: 'var(--bg-card2)', maxHeight: 220, overflow: 'hidden' }}>
-                                                    <img src={re.ejercicio.gif_url} alt={re.ejercicio.nombre} loading="lazy"
-                                                        style={{ width: '100%', maxHeight: 220, objectFit: 'cover' }} />
-                                                </div>
+                                            {/* Video / Media */}
+                                            {re.ejercicio?.video_url && (
+                                                <MediaViewer url={re.ejercicio.video_url} nombre={re.ejercicio.nombre ?? ''} />
                                             )}
 
                                             <div style={{ padding: '16px' }}>
@@ -207,12 +264,13 @@ export default function EntrenarPage() {
                                                     </div>
                                                 </div>
 
-                                                {/* Series buttons */}
+                                                {/* Botones de series */}
                                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                                     {Array.from({ length: re.series }, (_, i) => (
                                                         <button key={i} onClick={() => !state?.done[i] && completeSerie(re, i)}
                                                             style={{
-                                                                flex: 1, minWidth: 60, padding: '12px 8px', borderRadius: 12, cursor: state?.done[i] ? 'default' : 'pointer',
+                                                                flex: 1, minWidth: 60, padding: '12px 8px', borderRadius: 12,
+                                                                cursor: state?.done[i] ? 'default' : 'pointer',
                                                                 background: state?.done[i] ? 'rgba(5,255,122,0.15)' : 'var(--bg-card2)',
                                                                 color: state?.done[i] ? 'var(--neon)' : 'var(--text-primary)',
                                                                 fontWeight: 700, fontSize: 13, transition: 'all 0.2s',
@@ -225,9 +283,10 @@ export default function EntrenarPage() {
                                                     ))}
                                                 </div>
 
-                                                {re.ejercicio?.descripcion && (
+                                                {/* Instrucciones */}
+                                                {re.ejercicio?.instrucciones && (
                                                     <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 14, lineHeight: 1.5, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                                                        {re.ejercicio.descripcion}
+                                                        {re.ejercicio.instrucciones}
                                                     </p>
                                                 )}
                                             </div>

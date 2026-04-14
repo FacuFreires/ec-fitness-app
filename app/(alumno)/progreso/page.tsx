@@ -2,13 +2,13 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { EjercicioMaster, LogProgreso } from '@/types/database';
+import { Ejercicio, LogProgreso } from '@/types/database';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function ProgresoPage() {
     const { user } = useAuth();
-    const [ejercicios, setEjercicios] = useState<EjercicioMaster[]>([]);
+    const [ejercicios, setEjercicios] = useState<Ejercicio[]>([]);
     const [selectedEjercicio, setSelectedEjercicio] = useState<string>('');
     const [logs, setLogs] = useState<LogProgreso[]>([]);
     const [loading, setLoading] = useState(false);
@@ -16,12 +16,22 @@ export default function ProgresoPage() {
 
     useEffect(() => {
         if (!user) return;
-        // Load only exercises this alumno has logged
-        supabase.from('logs_progreso').select('ejercicio_id').eq('alumno_id', user.id)
-            .then(async ({ data }) => {
+        // Cargar solo los ejercicios que el alumno ha registrado
+        supabase
+            .from('logs_progreso')
+            .select('ejercicio_id')
+            .eq('alumno_id', user.id)
+            .then(async ({ data, error }) => {
+                if (error) { console.error('[Progreso] logs fetch:', error.message); return; }
                 const ids = [...new Set((data ?? []).map(l => l.ejercicio_id))];
                 if (ids.length === 0) return;
-                const { data: ejs } = await supabase.from('ejercicios_master').select('*').in('id', ids).order('nombre');
+                // tabla: ejercicios (no ejercicios_master)
+                const { data: ejs, error: ejError } = await supabase
+                    .from('ejercicios')
+                    .select('*')
+                    .in('id', ids)
+                    .order('nombre');
+                if (ejError) console.error('[Progreso] ejercicios fetch:', ejError.message);
                 setEjercicios(ejs ?? []);
                 if (ejs?.[0]) setSelectedEjercicio(ejs[0].id);
             });
@@ -30,10 +40,18 @@ export default function ProgresoPage() {
     useEffect(() => {
         if (!user || !selectedEjercicio) return;
         setLoading(true);
-        supabase.from('logs_progreso').select('*')
-            .eq('alumno_id', user.id).eq('ejercicio_id', selectedEjercicio)
-            .order('fecha').order('created_at')
-            .then(({ data }) => { setLogs(data ?? []); setLoading(false); });
+        supabase
+            .from('logs_progreso')
+            .select('*')
+            .eq('alumno_id', user.id)
+            .eq('ejercicio_id', selectedEjercicio)
+            .order('fecha')
+            .order('creado_at')          // columna: creado_at (no created_at)
+            .then(({ data, error }) => {
+                if (error) console.error('[Progreso] logs detail:', error.message);
+                setLogs(data ?? []);
+                setLoading(false);
+            });
     }, [user, selectedEjercicio]);
 
     const chartData = logs.reduce<{ fecha: string; peso: number }[]>((acc, l) => {
@@ -67,10 +85,12 @@ export default function ProgresoPage() {
                         {ejercicios.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                     </select>
 
-                    {/* Stats row */}
+                    {/* Stats */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                         <div className="glass-card" style={{ padding: '16px', textAlign: 'center' }}>
-                            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--neon)' }}>{maxWeight ?? '–'}<span style={{ fontSize: 14 }}> kg</span></div>
+                            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--neon)' }}>
+                                {maxWeight ?? '–'}<span style={{ fontSize: 14 }}> kg</span>
+                            </div>
                             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Máximo histórico</div>
                         </div>
                         <div className="glass-card" style={{ padding: '16px', textAlign: 'center' }}>
@@ -78,7 +98,9 @@ export default function ProgresoPage() {
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 24, fontWeight: 800,
                                 color: trend === null ? 'var(--text-secondary)' : trend > 0 ? 'var(--neon)' : trend < 0 ? 'var(--red)' : 'var(--text-secondary)'
                             }}>
-                                {trend === null ? '–' : <>{trend > 0 ? <TrendingUp size={22} /> : trend < 0 ? <TrendingDown size={22} /> : <Minus size={22} />}{Math.abs(trend)} kg</>}
+                                {trend === null ? '–' : (
+                                    <>{trend > 0 ? <TrendingUp size={22} /> : trend < 0 ? <TrendingDown size={22} /> : <Minus size={22} />}{Math.abs(trend)} kg</>
+                                )}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Tendencia</div>
                         </div>
@@ -87,15 +109,20 @@ export default function ProgresoPage() {
                     {/* Chart */}
                     {chartData.length > 1 && (
                         <div className="glass-card" style={{ padding: '16px', marginBottom: 20 }}>
-                            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: 'var(--text-secondary)' }}>Peso máximo por sesión (kg)</h3>
+                            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: 'var(--text-secondary)' }}>
+                                Peso máximo por sesión (kg)
+                            </h3>
                             <ResponsiveContainer width="100%" height={180}>
                                 <LineChart data={chartData}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                                     <XAxis dataKey="fecha" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                                     <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
-                                    <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }}
-                                        formatter={(v: number | undefined) => [`${v ?? 0} kg`, 'Peso']} />
-                                    <Line type="monotone" dataKey="peso" stroke="var(--neon)" strokeWidth={2.5} dot={{ fill: 'var(--neon)', r: 4 }} activeDot={{ r: 6 }} />
+                                    <Tooltip
+                                        contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }}
+                                        formatter={(v: number | undefined) => [`${v ?? 0} kg`, 'Peso']}
+                                    />
+                                    <Line type="monotone" dataKey="peso" stroke="var(--neon)" strokeWidth={2.5}
+                                        dot={{ fill: 'var(--neon)', r: 4 }} activeDot={{ r: 6 }} />
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>

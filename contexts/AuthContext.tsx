@@ -24,14 +24,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setUser(session?.user ?? null);
+
             if (session?.user) {
-                const { data } = await supabase.from('perfiles').select('*').eq('id', session.user.id).single();
-                setPerfil(data);
+                try {
+                    const { data, error } = await supabase
+                        .from('perfiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (error) {
+                        console.error('[AuthContext] Error al obtener perfil:', error.message);
+                        setPerfil(null);
+                    } else {
+                        setPerfil(data as Perfil);
+                    }
+                } catch (err) {
+                    console.error('[AuthContext] Excepción al obtener perfil:', err);
+                    setPerfil(null);
+                }
             } else {
                 setPerfil(null);
             }
+
+            // Siempre cerrar el loading, sin importar el resultado
             setLoading(false);
         });
+
         return () => subscription.unsubscribe();
     }, []);
 
@@ -41,16 +60,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     /**
-     * Registra un nuevo usuario con rol 'alumno'.
-     * El trigger `handle_new_user` en Supabase lee `raw_user_meta_data->>'nombre'`
-     * y crea automáticamente la fila en `perfiles`.
+     * Registra un nuevo usuario.
+     * El trigger `handle_new_user` en Supabase lee `raw_user_meta_data->>'nombre_completo'`
+     * y crea la fila en `perfiles` con ese valor.
      */
     const signUp = async (email: string, password: string, nombre: string) => {
         const { error } = await supabase.auth.signUp({
             email,
             password,
             options: {
-                data: { nombre },
+                data: { nombre_completo: nombre },
             },
         });
         return { error: error?.message ?? null };

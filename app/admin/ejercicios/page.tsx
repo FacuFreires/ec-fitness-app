@@ -1,43 +1,91 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { EjercicioMaster } from '@/types/database';
-import { Plus, Pencil, Trash2, X, Loader2, Search, Dumbbell } from 'lucide-react';
+import { Ejercicio } from '@/types/database';
+import { Plus, Pencil, Trash2, X, Loader2, Search, Dumbbell, Play } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const MUSCULOS = ['Pecho', 'Espalda', 'Hombros', 'Bíceps', 'Tríceps', 'Piernas', 'Glúteos', 'Core', 'Cardio', 'Full Body'];
+const GRUPOS_MUSCULARES = [
+    'Pecho', 'Espalda', 'Hombros', 'Bíceps', 'Tríceps',
+    'Piernas', 'Glúteos', 'Core', 'Cardio', 'Full Body',
+];
 
-const emptyForm = { nombre: '', musculo: '', gif_url: '', descripcion: '' };
+const emptyForm = { nombre: '', grupo_muscular: '', video_url: '', instrucciones: '' };
+
+// Previsualización inteligente de video/imagen
+function MediaPreview({ url, nombre }: { url: string; nombre: string }) {
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?\s]+)/);
+    if (ytMatch) {
+        return (
+            <div style={{ width: '100%', aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
+                <iframe
+                    src={`https://www.youtube.com/embed/${ytMatch[1]}?rel=0&modestbranding=1`}
+                    style={{ width: '100%', height: '100%', border: 'none' }}
+                    allowFullScreen title={nombre}
+                />
+            </div>
+        );
+    }
+    if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) {
+        return <video src={url} controls style={{ width: '100%', height: 140, borderRadius: 10, marginTop: 8 }} />;
+    }
+    return (
+        <img src={url} alt="preview" loading="lazy"
+            style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 10, marginTop: 8 }} />
+    );
+}
 
 export default function EjerciciosPage() {
-    const [ejercicios, setEjercicios] = useState<EjercicioMaster[]>([]);
+    const [ejercicios, setEjercicios] = useState<Ejercicio[]>([]);
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [modal, setModal] = useState(false);
-    const [editing, setEditing] = useState<EjercicioMaster | null>(null);
+    const [editing, setEditing] = useState<Ejercicio | null>(null);
     const [form, setForm] = useState(emptyForm);
     const [saving, setSaving] = useState(false);
     const supabase = createClient();
 
     const fetchEjercicios = async () => {
-        const { data } = await supabase.from('ejercicios_master').select('*').order('nombre');
+        // tabla: ejercicios (no ejercicios_master)
+        const { data, error } = await supabase.from('ejercicios').select('*').order('nombre');
+        if (error) console.error('[Ejercicios] fetch:', error.message);
         setEjercicios(data ?? []);
         setLoading(false);
     };
     useEffect(() => { fetchEjercicios(); }, []);
 
     const openCreate = () => { setEditing(null); setForm(emptyForm); setModal(true); };
-    const openEdit = (e: EjercicioMaster) => { setEditing(e); setForm({ nombre: e.nombre, musculo: e.musculo, gif_url: e.gif_url ?? '', descripcion: e.descripcion ?? '' }); setModal(true); };
+    const openEdit = (e: Ejercicio) => {
+        setEditing(e);
+        setForm({
+            nombre: e.nombre,
+            grupo_muscular: e.grupo_muscular,
+            video_url: e.video_url ?? '',
+            instrucciones: e.instrucciones ?? '',
+        });
+        setModal(true);
+    };
 
     const handleSave = async () => {
-        if (!form.nombre || !form.musculo) { toast.error('Nombre y músculo son obligatorios'); return; }
+        if (!form.nombre || !form.grupo_muscular) {
+            toast.error('Nombre y grupo muscular son obligatorios');
+            return;
+        }
         setSaving(true);
+        const payload = {
+            nombre: form.nombre,
+            grupo_muscular: form.grupo_muscular,
+            video_url: form.video_url || null,
+            instrucciones: form.instrucciones || null,
+        };
         if (editing) {
-            const { error } = await supabase.from('ejercicios_master').update(form).eq('id', editing.id);
-            if (error) toast.error('Error al guardar'); else toast.success('Ejercicio actualizado');
+            const { error } = await supabase.from('ejercicios').update(payload).eq('id', editing.id);
+            if (error) { toast.error('Error al guardar'); console.error(error.message); }
+            else toast.success('Ejercicio actualizado');
         } else {
-            const { error } = await supabase.from('ejercicios_master').insert(form);
-            if (error) toast.error('Error al guardar'); else toast.success('Ejercicio creado');
+            const { error } = await supabase.from('ejercicios').insert(payload);
+            if (error) { toast.error('Error al guardar'); console.error(error.message); }
+            else toast.success('Ejercicio creado');
         }
         setSaving(false);
         setModal(false);
@@ -46,14 +94,14 @@ export default function EjerciciosPage() {
 
     const handleDelete = async (id: string) => {
         if (!confirm('¿Eliminar ejercicio?')) return;
-        await supabase.from('ejercicios_master').delete().eq('id', id);
+        await supabase.from('ejercicios').delete().eq('id', id);
         toast.success('Eliminado');
         fetchEjercicios();
     };
 
     const filtered = ejercicios.filter(e =>
-        e.nombre.toLowerCase().includes(search.toLowerCase()) ||
-        e.musculo.toLowerCase().includes(search.toLowerCase())
+        (e.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        (e.grupo_muscular ?? '').toLowerCase().includes(search.toLowerCase())
     );
 
     return (
@@ -82,24 +130,55 @@ export default function EjerciciosPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
                     {filtered.map(ej => (
                         <div key={ej.id} className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-                            {ej.gif_url && (
-                                <div style={{ height: 160, overflow: 'hidden', background: 'var(--bg-card2)' }}>
-                                    <img src={ej.gif_url} alt={ej.nombre} loading="lazy"
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                </div>
-                            )}
-                            {!ej.gif_url && (
+                            {/* Media preview */}
+                            {ej.video_url ? (
+                                (() => {
+                                    const ytMatch = ej.video_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?\s]+)/);
+                                    if (ytMatch) {
+                                        return (
+                                            <div style={{ height: 160, background: '#000', position: 'relative', overflow: 'hidden' }}>
+                                                <img
+                                                    src={`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`}
+                                                    alt={ej.nombre}
+                                                    style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
+                                                />
+                                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <div style={{ background: 'rgba(5,255,122,0.9)', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <Play size={20} color="#000" style={{ marginLeft: 3 }} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    if (/\.(gif|jpg|jpeg|png|webp)(\?.*)?$/i.test(ej.video_url)) {
+                                        return (
+                                            <div style={{ height: 160, overflow: 'hidden', background: 'var(--bg-card2)' }}>
+                                                <img src={ej.video_url} alt={ej.nombre} loading="lazy"
+                                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <div style={{ height: 100, background: 'var(--bg-card2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Play size={32} color="var(--neon)" />
+                                        </div>
+                                    );
+                                })()
+                            ) : (
                                 <div style={{ height: 100, background: 'var(--bg-card2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <Dumbbell size={40} color="var(--border)" />
                                 </div>
                             )}
+
                             <div style={{ padding: '14px 16px' }}>
                                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{ej.nombre}</div>
                                 <span style={{ background: 'rgba(5,255,122,0.1)', color: 'var(--neon)', fontSize: 11, padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
-                                    {ej.musculo}
+                                    {ej.grupo_muscular}
                                 </span>
-                                {ej.descripcion && (
-                                    <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 8, lineHeight: 1.4 }}>{ej.descripcion}</p>
+                                {ej.instrucciones && (
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 8, lineHeight: 1.4 }}>
+                                        {ej.instrucciones}
+                                    </p>
                                 )}
                                 <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
                                     <button className="btn-ghost" onClick={() => openEdit(ej)}
@@ -133,37 +212,46 @@ export default function EjerciciosPage() {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
-                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Nombre del ejercicio *</label>
+                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                                    Nombre del ejercicio *
+                                </label>
                                 <input className="input-base" placeholder="Ej: Press de banca" value={form.nombre}
                                     onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
                             </div>
                             <div>
-                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Grupo muscular *</label>
-                                <select className="input-base" value={form.musculo}
-                                    onChange={e => setForm(f => ({ ...f, musculo: e.target.value }))}
+                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                                    Grupo muscular *
+                                </label>
+                                <select className="input-base" value={form.grupo_muscular}
+                                    onChange={e => setForm(f => ({ ...f, grupo_muscular: e.target.value }))}
                                     style={{ cursor: 'pointer' }}>
                                     <option value="">Seleccionar...</option>
-                                    {MUSCULOS.map(m => <option key={m} value={m}>{m}</option>)}
+                                    {GRUPOS_MUSCULARES.map(m => <option key={m} value={m}>{m}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>URL del GIF / Video</label>
-                                <input className="input-base" placeholder="https://..." value={form.gif_url}
-                                    onChange={e => setForm(f => ({ ...f, gif_url: e.target.value }))} />
-                                {form.gif_url && (
-                                    <img src={form.gif_url} alt="preview" loading="lazy"
-                                        style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 10, marginTop: 8 }} />
-                                )}
+                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                                    URL del video / GIF
+                                </label>
+                                <input className="input-base" placeholder="https://youtube.com/... o https://..." value={form.video_url}
+                                    onChange={e => setForm(f => ({ ...f, video_url: e.target.value }))} />
+                                {form.video_url && <MediaPreview url={form.video_url} nombre={form.nombre} />}
                             </div>
                             <div>
-                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Descripción</label>
+                                <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                                    Instrucciones
+                                </label>
                                 <textarea className="input-base" placeholder="Indicaciones técnicas..." rows={3}
-                                    value={form.descripcion} onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
+                                    value={form.instrucciones}
+                                    onChange={e => setForm(f => ({ ...f, instrucciones: e.target.value }))}
                                     style={{ resize: 'none' }} />
                             </div>
                             <button className="btn-primary" onClick={handleSave} disabled={saving}
                                 style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                {saving ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Guardando...</> : 'Guardar ejercicio'}
+                                {saving
+                                    ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Guardando...</>
+                                    : 'Guardar ejercicio'
+                                }
                             </button>
                         </div>
                     </div>

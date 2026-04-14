@@ -1,33 +1,37 @@
 export type Role = 'admin' | 'alumno';
 
+// ── Tabla: perfiles ────────────────────────────────────────────────────────
 export interface Perfil {
     id: string;
-    nombre: string;
+    nombre_completo: string;
     email: string;
     rol: Role;
-    fecha_pago: string | null;
     fecha_vencimiento: string | null;
-    id_entrenador: string | null;
-    created_at: string;
+    pago_al_dia: boolean;
+    creado_at: string;
 }
 
-export interface EjercicioMaster {
+// ── Tabla: ejercicios ──────────────────────────────────────────────────────
+export interface Ejercicio {
     id: string;
     nombre: string;
-    musculo: string;
-    gif_url: string | null;
-    descripcion: string | null;
-    created_at: string;
+    grupo_muscular: string;
+    video_url: string | null;
+    instrucciones: string | null;
+    creado_at: string;
 }
 
+// ── Tabla: rutinas ─────────────────────────────────────────────────────────
 export interface Rutina {
     id: string;
     alumno_id: string;
     nombre_rutina: string;
-    activo: boolean;
+    activa: boolean;
+    fecha_inicio: string | null;
     creado_at: string;
 }
 
+// ── Tabla: rutina_ejercicios ───────────────────────────────────────────────
 export interface RutinaEjercicio {
     id: string;
     rutina_id: string;
@@ -36,9 +40,10 @@ export interface RutinaEjercicio {
     repeticiones: number;
     tiempo_descanso: number;
     orden: number;
-    ejercicio?: EjercicioMaster;
+    ejercicio?: Ejercicio;
 }
 
+// ── Tabla: logs_progreso ───────────────────────────────────────────────────
 export interface LogProgreso {
     id: string;
     alumno_id: string;
@@ -47,5 +52,5 @@ export interface LogProgreso {
     peso_cargado: number | null;
     reps_hechas: number | null;
     fecha: string;
-    created_at: string;
+    creado_at: string;
 }

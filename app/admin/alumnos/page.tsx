@@ -5,10 +5,10 @@ import { Perfil } from '@/types/database';
 import { Users, CheckCircle, XCircle, Clock, Search, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 
-function paymentStatus(fechaVencimiento: string | null) {
+function paymentStatus(pagado: boolean, fechaVencimiento: string | null) {
     if (!fechaVencimiento) return { label: 'Sin datos', cls: 'badge-warning', icon: Clock };
     const diff = Math.floor((new Date(fechaVencimiento).getTime() - Date.now()) / 86400000);
-    if (diff < 0) return { label: `Vencido hace ${Math.abs(diff)}d`, cls: 'badge-expired', icon: XCircle };
+    if (!pagado || diff < 0) return { label: `Vencido${diff < 0 ? ` (${Math.abs(diff)}d)` : ''}`, cls: 'badge-expired', icon: XCircle };
     if (diff <= 7) return { label: `Vence en ${diff}d`, cls: 'badge-warning', icon: Clock };
     return { label: `Al día (${diff}d)`, cls: 'badge-active', icon: CheckCircle };
 }
@@ -20,25 +20,27 @@ export default function AlumnosPage() {
     const supabase = createClient();
 
     useEffect(() => {
-        supabase.from('perfiles').select('*').eq('rol', 'alumno').order('nombre')
-            .then(({ data }) => { setAlumnos(data ?? []); setLoading(false); });
+        supabase
+            .from('perfiles')
+            .select('*')
+            .eq('rol', 'alumno')
+            .order('nombre_completo')      // columna: nombre_completo
+            .then(({ data, error }) => {
+                if (error) console.error('[Alumnos] fetch:', error.message);
+                setAlumnos(data ?? []);
+                setLoading(false);
+            });
     }, []);
 
     const filtered = alumnos.filter(a =>
-        a.nombre.toLowerCase().includes(search.toLowerCase()) ||
-        a.email.toLowerCase().includes(search.toLowerCase())
+        (a.nombre_completo ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        (a.email ?? '').toLowerCase().includes(search.toLowerCase())
     );
 
     const stats = {
         total: alumnos.length,
-        active: alumnos.filter(a => {
-            if (!a.fecha_vencimiento) return false;
-            return new Date(a.fecha_vencimiento) >= new Date();
-        }).length,
-        expired: alumnos.filter(a => {
-            if (!a.fecha_vencimiento) return false;
-            return new Date(a.fecha_vencimiento) < new Date();
-        }).length,
+        active: alumnos.filter(a => a.pago_al_dia).length,
+        expired: alumnos.filter(a => !a.pago_al_dia).length,
     };
 
     return (
@@ -82,8 +84,9 @@ export default function AlumnosPage() {
                         </div>
                     )}
                     {filtered.map(alumno => {
-                        const status = paymentStatus(alumno.fecha_vencimiento);
+                        const status = paymentStatus(alumno.pago_al_dia, alumno.fecha_vencimiento);
                         const StatusIcon = status.icon;
+                        const inicial = alumno.nombre_completo?.charAt(0)?.toUpperCase() ?? '?';
                         return (
                             <Link key={alumno.id} href={`/admin/rutinas?alumno=${alumno.id}`}
                                 style={{ textDecoration: 'none' }}>
@@ -100,10 +103,10 @@ export default function AlumnosPage() {
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             fontWeight: 800, color: '#000', fontSize: 16, flexShrink: 0,
                                         }}>
-                                            {alumno.nombre.charAt(0).toUpperCase()}
+                                            {inicial}
                                         </div>
                                         <div>
-                                            <div style={{ fontWeight: 600, fontSize: 15 }}>{alumno.nombre}</div>
+                                            <div style={{ fontWeight: 600, fontSize: 15 }}>{alumno.nombre_completo}</div>
                                             <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{alumno.email}</div>
                                         </div>
                                     </div>

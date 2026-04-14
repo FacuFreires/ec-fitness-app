@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import Link from 'next/link';
-import { Users, Dumbbell, LayoutDashboard, LogOut, Menu } from 'lucide-react';
+import { Users, Dumbbell, LayoutDashboard, LogOut } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
@@ -19,7 +19,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [menuOpen, setMenuOpen] = useState(false);
 
     useEffect(() => {
-        if (!loading && perfil?.rol !== 'admin') router.replace('/entrenar');
+        // Si ya cargó y el rol NO es 'admin', redirigir al área de alumno
+        if (!loading && perfil !== null && perfil?.rol !== 'admin') {
+            router.replace('/entrenar');
+        }
     }, [perfil, loading]);
 
     if (loading) return (
@@ -46,10 +49,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         <Dumbbell size={20} color="#000" />
                     </div>
                     <span style={{ fontWeight: 800, fontSize: 18 }}>EC <span className="neon-text">Fitness</span></span>
-                    <span style={{ background: 'rgba(5,255,122,0.15)', color: 'var(--neon)', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid rgba(5,255,122,0.3)' }}>ADMIN</span>
+                    <span style={{ background: 'rgba(5,255,122,0.15)', color: 'var(--neon)', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, border: '1px solid rgba(5,255,122,0.3)' }}>
+                        ADMIN
+                    </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{perfil?.nombre}</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                        {perfil?.nombre_completo ?? ''}
+                    </span>
                     <button onClick={signOut} className="btn-ghost" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <LogOut size={14} /> Salir
                     </button>
